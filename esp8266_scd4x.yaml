@@ -1,0 +1,112 @@
+esphome:
+  name: espscd40
+  comment: Room CO2 sensor
+  on_boot:
+  - priority: 300
+    then:
+      lambda: |-
+        WiFi.setPhyMode(WIFI_PHY_MODE_11G);
+  
+esp8266:
+  board: d1_mini
+  framework:
+    version: 3.1.2
+    # source: ~3.30102.0
+    platform_version: platformio/espressif8266@4.2.1
+  restore_from_flash: false
+  early_pin_init: true
+  board_flash_mode: dout
+  
+
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  fast_connect: false
+  output_power: 8.5dB
+  # manual_ip:
+  #   gateway: 192.168.1.1
+  #   subnet: 255.255.255.0
+  #   dns1: 192.168.1.71
+  #   static_ip: 192.168.1.150
+  # power_save_mode: HIGH
+
+captive_portal:
+
+# Enable logging to the console
+logger:
+  # level: VERY_VERBOSE
+# Home Assistant integration
+api:
+  encryption:
+    key: !secret encryption_key_scd4x
+  port: 6053
+  password: ''
+  reboot_timeout: 15min
+  batch_delay: 100ms
+
+# Pins on an esp8266
+i2c:
+  sda: D2 # SDA plugged to D2
+  scl: D1 # SCL plugged to D1
+  frequency: 100kHz
+  scan: false
+
+# Sensors definitions
+sensor:
+  - platform: scd4x
+    co2:
+      name: "SCD40 CO2"
+    temperature:
+      name: "CO2 temperature"
+      accuracy_decimals: 0
+    humidity:
+      name: "CO2 humidity"
+      accuracy_decimals: 0
+        # WiFi signal
+    update_interval: 60s 
+    measurement_mode: low_power_periodic
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    id: wifi_signal_db
+    update_interval: 300s
+    entity_category: "diagnostic"
+    accuracy_decimals: 0
+  - platform: copy
+    source_id: wifi_signal_db
+    name: "WiFi Signal Percent"
+    filters:
+      - lambda: return min(max(2 * (x + 100.0), 0.0), 100.0);
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
+    entity_category: "diagnostic"
+    device_class: ""
+  - platform: uptime
+    name: Co2 RF Uptime
+    update_interval: 300s
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+    version: 2
+    port: 8266
+
+text_sensor:
+  # ESPHome version
+  - platform: version
+    hide_timestamp: true
+    name: "ESPHome Version"
+  # IP address and connected SSID
+  - platform: wifi_info
+    ip_address:
+      name: "IP Address"
+      icon: mdi:wifi
+    ssid:
+      name: "Connected SSID"
+      icon: mdi:wifi-strength-2
+    bssid:
+      name: "BSSID"
+      icon: mdi:wifi
+binary_sensor:
+  - platform: status
+    name: Co2 RF Status
