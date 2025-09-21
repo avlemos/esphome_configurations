@@ -1,0 +1,261 @@
+esphome:
+  name: esp32cc11
+  friendly_name: ESP32 with Multiple Radios
+  comment: CC11 RF Bridge
+
+external_components:
+  - source: github://pr#6300
+    components: [ cc1101 ]
+  # - source: github://gabest11/esphome@rc_switch_but_better
+  #   components: [ remote_base, remote_receiver, remote_transmitter ]
+  # - source:
+  #     type: git
+  #     url: https://github.com/swoboda1337/esphome
+  #     ref: dooya
+  #   components: [ remote_base ]
+  #   refresh: always
+    
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+# Enable logging
+logger:
+  level: DEBUG
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: !secret encryption_key_cc11
+  # services:
+  # - service: 'remote_transmit'
+  #   variables:
+  #     code: string
+  #   then:
+  #     - remote_transmitter.transmit_cc1101:
+  #         code: !lambda 'return code.c_str();'
+  #         # protocol:
+  #         #   pulse_length: 420
+  #         #   sync: [1,31]
+  #         #   zero: [1,3]
+  #         #   one: [3,1]
+  #         #   inverted: true
+  #         repeat:
+  #           times: 10
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+    version: 2
+    port: 8266
+
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+        
+captive_portal:
+
+spi:
+  clk_pin: 18
+  miso_pin: 19
+  mosi_pin: 23
+  
+
+# Sensors definitions
+sensor:
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    id: wifi_signal_db
+    update_interval: 300s
+    entity_category: "diagnostic"
+    accuracy_decimals: 0
+  - platform: copy
+    source_id: wifi_signal_db
+    name: "WiFi Signal Percent"
+    filters:
+      - lambda: return min(max(2 * (x + 100.0), 0.0), 100.0);
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
+    entity_category: "diagnostic"
+    device_class: ""
+  - platform: uptime
+    name: RF Uptime
+    update_interval: 300s
+
+text_sensor:
+  # ESPHome version
+  - platform: version
+    hide_timestamp: true
+    name: "ESPHome Version"
+  # IP address and connected SSID
+  - platform: wifi_info
+    ip_address:
+      name: "IP Address"
+      icon: mdi:wifi
+    ssid:
+      name: "Connected SSID"
+      icon: mdi:wifi-strength-2
+    bssid:
+      name: "BSSID"
+      icon: mdi:wifi
+
+cc1101:
+  id: transceiver
+  cs_pin: 5
+  output_power: 11
+  # gdo0_pin: D1
+  tuner:
+    frequency: 433920
+    if_frequency: 153
+    bandwidth: 100
+    channel: 0
+    channel_spacing: 200
+    # fsk_deviation: 47.607
+    # msk_deviation: 0
+    symbol_rate: 5000
+    sync_mode: None
+    carrier_sense_above_threshold: true
+    modulation: ASK/OOK
+  # agc:    
+    # magn_target: 120         # experimentar 80 / 120 / 200
+    # max_lna_gain: 2.6dB          # experimentar 1..6 (reduzir se saturação/ruído)
+    # carrier_sense_abs_thr: 7  # ajustar se exposto
+    # carrier_sense_rel_thr: +14dB  # ajustar se exposto
+  sensor:
+    chip_id:
+      name: Chip Id
+    # rssi:
+    #   name: RSSI
+    #   accuracy_decimals: 1
+    #   unit_of_measurement: dBm
+    #   entity_category: diagnostic
+    # lqi:
+    #   name: LQI
+    # temperature:
+    #   name: Temperature
+
+
+number:
+  - platform: cc1101
+    output_power:
+      name: output_power
+    tuner:
+      frequency:
+        name: Tuner frequency
+      if_frequency:
+        name: Tuner if_frequency
+      bandwidth:
+        name: Tuner bandwidth
+      channel:
+        name: Tuner channel
+      channel_spacing:
+        name: Tuner channel_spacing
+      fsk_deviation:
+        name: Tuner fsk_deviation
+      msk_deviation:
+        name: Tuner msk_deviation
+      symbol_rate:
+        name: Tuner symbol_rate
+    agc:
+      carrier_sense_abs_thr:
+        name: AGC carrier_sense_abs_thr
+
+select:
+  - platform: cc1101
+    tuner:
+      sync_mode:
+        name: Tuner Sync Mode
+      modulation:
+        name: Tuner Modulation
+    agc:
+      magn_target:
+        name: AGC magn_target
+      max_lna_gain:
+        name: AGC max_lna_gain
+      # max_dva_gain:
+      #   name: AGC max_dva_gain
+      carrier_sense_rel_thr:
+        name: AGC carrier_sense_rel_thr
+      filter_length_fsk_msk:
+        name: AGC filter_length_fsk_msk
+      filter_length_ask_ook:
+        name: AGC filter_length_ask_ook
+      freeze:
+        name: AGC freeze
+      wait_time:
+        name: AGC wait_time
+      hyst_level:
+        name: AGC hyst_level
+
+switch:
+  - platform: cc1101
+    tuner:
+      carrier_sense_above_threshold:
+        name: Tuner carrier_sense_above_threshold
+    agc:
+      lna_priority:
+        name: AGC lna_priority
+
+
+remote_receiver:
+  - id: receiver
+    pin:
+      number: 32
+      allow_other_uses: true
+    dump:  
+      - raw
+      - rc_switch
+      - dooya
+    on_dooya:
+      then:
+        - logger.log: "Dooya..........................."
+    tolerance: 40%
+    buffer_size: 10kb
+    filter: 250us
+    idle: 7ms
+
+remote_transmitter:
+  id: remote_transmitter1
+  pin:
+      number: 32
+      allow_other_uses: true
+  carrier_duty_percent: 100%
+  on_transmit:
+    then:
+      - cc1101.begin_tx: transceiver
+  on_complete:
+    then:
+      - cc1101.end_tx: transceiver
+
+binary_sensor:
+  - platform: remote_receiver
+    name: "Open Blind"
+    internal: true
+    dooya:
+      id: 0xC0E26A
+      channel: 0
+      button: 12
+      check: 6
+    filters:
+      - delayed_off: 100ms  # Debounce multiple signals received from remote
+    on_press:
+      - logger.log: "!!!Open Blind!!!"
+
+button:
+  - platform: template
+    name: "Open Blind"
+    on_press:
+      - remote_transmitter.transmit_rc_switch_raw_cc1101:
+          code: '101000111100000011100010011010100000000100000000000010110001'
+          # protocol:
+          #   pulse_length: 434
+          #   sync: [1,6]
+          #   zero: [1,2]
+          #   one: [2,1]
+          #   inverted: true
+          repeat:
+            times: 4
